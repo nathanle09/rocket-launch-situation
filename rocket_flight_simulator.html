@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estes Athena Physics Lab - 2D Rocket Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for real-time telemetry graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        lab: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                            accent: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Courier New', 'monospace'],
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        canvas { touch-action: none; }
+        input[type=range] { accent-color: #0284c7; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-lab-900 text-slate-100 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-lab-800 border-b border-slate-700/80 px-4 py-2.5 flex justify-between items-center z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-sky-500/20 p-2 rounded-lg border border-sky-500/40 text-sky-400">
+                <i data-lucide="flask-conical" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-wide flex items-center gap-2">
+                    PHYSICS LAB <span class="text-xs font-mono bg-sky-950 text-sky-400 px-2 py-0.5 rounded border border-sky-800">Estes Athena Edition</span>
+                </h1>
+                <p class="text-xs text-slate-400">Model Rocket Flight Dynamics & Trajectory Analysis</p>
+            </div>
+        </div>
+
+        <!-- Simulation Speed & Controls -->
+        <div class="flex items-center gap-2 bg-lab-900 p-1.5 rounded-xl border border-slate-700">
+            <button id="btn-play" class="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition flex items-center gap-1.5 text-xs shadow-md">
+                <i data-lucide="play" class="w-4 h-4"></i> <span id="lbl-play">Launch Rocket</span>
+            </button>
+            <button id="btn-pause" class="p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition text-xs hidden">
+                <i data-lucide="pause" class="w-4 h-4"></i> Pause
+            </button>
+            <button id="btn-reset" class="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition text-xs flex items-center gap-1">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset
+            </button>
+            <div class="h-5 w-px bg-slate-700 mx-1"></div>
+            <span class="text-xs font-mono text-slate-400 px-1">Speed:</span>
+            <div class="flex bg-lab-800 rounded-lg p-0.5 border border-slate-700">
+                <button class="speed-btn px-2 py-1 text-xs font-mono rounded bg-sky-500/20 text-sky-300 font-bold" data-speed="1">1x</button>
+                <button class="speed-btn px-2 py-1 text-xs font-mono rounded text-slate-400 hover:text-white" data-speed="0.5">0.5x</button>
+                <button class="speed-btn px-2 py-1 text-xs font-mono rounded text-slate-400 hover:text-white" data-speed="2">2x</button>
+                <button class="speed-btn px-2 py-1 text-xs font-mono rounded text-slate-400 hover:text-white" data-speed="5">5x</button>
+            </div>
+        </div>
+
+        <!-- Student Info & CSV Export -->
+        <div class="flex items-center gap-2">
+            <button id="btn-export-csv" class="p-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition shadow-sm">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Export Lab CSV
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Left Sidebar: Lab Data Inputs & Motor Selection -->
+        <aside class="w-80 md:w-96 bg-lab-800 border-r border-slate-700/80 flex flex-col shrink-0 overflow-y-auto">
+            <div class="p-3 bg-lab-900/60 border-b border-slate-700 text-xs font-bold uppercase tracking-wider text-sky-400 flex justify-between items-center">
+                <span>Lab Setup & Rocket Data</span>
+                <i data-lucide="sliders" class="w-4 h-4"></i>
+            </div>
+
+            <div class="p-4 space-y-4 text-xs">
+
+                <!-- Student Metadata Box -->
+                <div class="p-3 bg-lab-900 rounded-xl border border-slate-700 space-y-2">
+                    <div class="font-bold text-sky-400 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                        <i data-lucide="user" class="w-3.5 h-3.5"></i> Student Identification
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Student Name</label>
+                            <input type="text" id="student-name" value="Jane Doe" class="w-full bg-lab-800 border border-slate-700 rounded p-1.5 text-slate-100 font-medium focus:border-sky-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Group ID / Period</label>
+                            <input type="text" id="group-id" value="Group A3" class="w-full bg-lab-800 border border-slate-700 rounded p-1.5 text-slate-100 font-medium focus:border-sky-500 focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estes Motor Selection -->
+                <div class="space-y-2">
+                    <label class="block text-slate-300 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                        <i data-lucide="flame" class="w-3.5 h-3.5 text-orange-400"></i> Estes Motor Engine
+                    </label>
+                    <select id="motor-select" class="w-full bg-lab-900 border border-slate-700 text-xs text-slate-200 rounded-lg p-2 focus:outline-none focus:border-sky-500 font-mono">
+                        <option value="A8-3">Estes A8-3 (Avg Thrust: 4.5N, Burn: 0.5s)</option>
+                        <option value="B6-4">Estes B6-4 (Avg Thrust: 5.2N, Burn: 0.8s)</option>
+                        <option value="C6-5" selected>Estes C6-5 (Avg Thrust: 6.0N, Burn: 1.7s)</option>
+                        <option value="custom">Custom Motor Profile</option>
+                    </select>
+                </div>
+
+                <!-- Mass Data Inputs -->
+                <div class="space-y-3 pt-2 border-t border-slate-700">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                            <i data-lucide="scale" class="w-3.5 h-3.5 text-sky-400"></i> Rocket Mass Measurements
+                        </h3>
+                        <select id="mass-unit" class="bg-lab-900 text-sky-400 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] font-mono">
+                            <option value="g">Unit: Grams (g)</option>
+                            <option value="kg">Unit: Kilograms (kg)</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1" title="Initial Mass before launch ($m_0$)">Initial Mass ($m_0$)</label>
+                            <input type="number" id="mass-initial" value="48.5" step="0.1" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1" title="Final Mass after burnout ($m_f$)">Final Mass ($m_f$)</label>
+                            <input type="number" id="mass-final" value="36.0" step="0.1" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                        </div>
+                    </div>
+
+                    <!-- Derived Propellant Mass -->
+                    <div class="p-2.5 bg-lab-900/80 rounded-lg border border-sky-500/30 flex justify-between items-center text-[11px]">
+                        <span class="text-slate-400">Calculated Propellant Mass ($m_p$):</span>
+                        <span id="calc-prop-mass" class="font-mono font-bold text-sky-400">12.5 g</span>
+                    </div>
+                </div>
+
+                <!-- Custom Engine Parameters (Shown when Custom Motor selected) -->
+                <div id="custom-motor-panel" class="space-y-2 p-2.5 bg-lab-900/60 rounded-lg border border-slate-700 hidden">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Avg Thrust (N)</label>
+                            <input type="number" id="custom-thrust" value="6.0" step="0.1" class="w-full bg-lab-800 border border-slate-700 rounded p-1 text-slate-100 font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Burn Time (s)</label>
+                            <input type="number" id="custom-burn" value="1.7" step="0.1" class="w-full bg-lab-800 border border-slate-700 rounded p-1 text-slate-100 font-mono">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rocket Physical Dimensions -->
+                <div class="space-y-3 pt-2 border-t border-slate-700">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <i data-lucide="ruler" class="w-3.5 h-3.5 text-sky-400"></i> Estes Athena Specifications
+                    </h3>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Diameter (cm)</label>
+                            <input type="number" id="rocket-diameter" value="2.5" step="0.1" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1" title="Drag Coefficient">Drag Coeff ($C_d$)</label>
+                            <input type="number" id="rocket-cd" value="0.45" step="0.05" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1">Parachute Size (cm diameter)</label>
+                        <input type="number" id="chute-diameter" value="30" step="5" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                    </div>
+                </div>
+
+                <!-- Launch Pad Environment & Rod -->
+                <div class="space-y-3 pt-2 border-t border-slate-700">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <i data-lucide="wind" class="w-3.5 h-3.5 text-sky-400"></i> Launch Pad Setup
+                    </h3>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Launch Rod (m)</label>
+                            <input type="number" id="rod-length" value="0.91" step="0.1" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Launch Angle (°)</label>
+                            <input type="number" id="launch-angle" value="0" min="0" max="20" class="w-full bg-lab-900 border border-slate-700 rounded p-1.5 text-slate-100 font-mono">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-slate-400 mb-1">
+                            <span>Crosswind Speed (m/s)</span>
+                            <span id="val-wind" class="font-mono text-slate-200">1.5 m/s</span>
+                        </div>
+                        <input type="range" id="wind-speed" min="0" max="15" step="0.5" value="1.5" class="w-full">
+                    </div>
+                </div>
+
+                <!-- Tsiolkovsky Theoretical vs Simulated Comparison -->
+                <div class="p-3 bg-lab-900 rounded-xl border border-sky-500/30 text-xs space-y-1.5">
+                    <div class="font-bold text-sky-400 text-[11px] uppercase tracking-wider">Physics Lab Comparison</div>
+                    <div class="flex justify-between text-slate-300">
+                        <span>Theoretical $\Delta v$ (Tsiolkovsky):</span>
+                        <span id="calc-deltav" class="font-mono font-bold text-sky-400">0 m/s</span>
+                    </div>
+                    <div class="flex justify-between text-slate-300">
+                        <span>Predicted Peak Speed (No Drag):</span>
+                        <span id="calc-vmax-nodrag" class="font-mono text-slate-300">0 m/s</span>
+                    </div>
+                    <div class="flex justify-between text-slate-400 text-[10px]">
+                        <span>Initial Launch TWR:</span>
+                        <span id="calc-twr" class="font-mono text-slate-200">0.0</span>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- Main Canvas Simulation & Interactive HUD -->
+        <main class="flex-1 flex flex-col relative bg-slate-950 overflow-hidden">
+            
+            <!-- Canvas HUD Overlay (Top Center) -->
+            <div class="absolute top-3 left-3 right-3 z-10 pointer-events-none flex justify-between items-start gap-2">
+                <!-- Primary Telemetry HUD -->
+                <div class="bg-lab-900/90 backdrop-blur border border-slate-700 rounded-xl p-3 flex gap-4 text-xs shadow-2xl pointer-events-auto">
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase font-semibold">Altitude</div>
+                        <div id="hud-alt" class="text-base font-bold font-mono text-sky-400">0.0 m</div>
+                    </div>
+                    <div class="w-px bg-slate-700"></div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase font-semibold">Velocity</div>
+                        <div id="hud-vel" class="text-base font-bold font-mono text-emerald-400">0.0 m/s</div>
+                    </div>
+                    <div class="w-px bg-slate-700"></div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase font-semibold">Acceleration</div>
+                        <div id="hud-acc" class="text-base font-bold font-mono text-amber-400">0.0 g</div>
+                    </div>
+                    <div class="w-px bg-slate-700"></div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase font-semibold">Dynamic Pressure</div>
+                        <div id="hud-q" class="text-base font-bold font-mono text-purple-400">0 Pa</div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Camera Modes -->
+                <div class="bg-lab-900/90 backdrop-blur border border-slate-700 rounded-xl p-1.5 flex gap-1 pointer-events-auto">
+                    <button id="cam-follow" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40">Follow Rocket</button>
+                    <button id="cam-pad" class="px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-white">Launch Pad</button>
+                    <button id="cam-full" class="px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-white">Full Overview</button>
+                </div>
+            </div>
+
+            <!-- Main Render Canvas -->
+            <canvas id="simCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+            <!-- Bottom Flight Status Bar -->
+            <div class="absolute bottom-3 left-3 right-3 z-10 pointer-events-none flex justify-between items-end">
+                <div class="bg-lab-900/90 backdrop-blur border border-slate-700 rounded-xl px-4 py-2 pointer-events-auto flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span id="status-indicator" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+                        <span id="status-text" class="font-mono text-xs font-bold uppercase text-slate-200">READY ON LAUNCH PAD</span>
+                    </div>
+                    <div class="h-4 w-px bg-slate-700"></div>
+                    <div class="text-xs font-mono text-slate-400">
+                        MET: <span id="hud-time" class="text-slate-100 font-bold">T+00:00.00</span>
+                    </div>
+                </div>
+
+                <!-- Dynamic Flight Summary Box -->
+                <div id="summary-badge" class="bg-lab-900/90 backdrop-blur border border-slate-700 rounded-xl p-3 text-xs font-mono pointer-events-auto hidden space-y-1">
+                    <div class="text-emerald-400 font-bold">FLIGHT COMPLETE</div>
+                    <div class="text-slate-300">Apogee: <span id="sum-apogee" class="font-bold text-white">0 m</span></div>
+                    <div class="text-slate-300">Max Speed: <span id="sum-vmax" class="font-bold text-white">0 m/s</span></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Panel: Dynamic Charts & Event Log -->
+        <aside class="w-80 md:w-96 bg-lab-800 border-l border-slate-700/80 flex flex-col shrink-0">
+            <!-- Navigation Tabs -->
+            <div class="flex border-b border-slate-700 bg-lab-900">
+                <button id="tab-charts-btn" class="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-sky-400 border-b-2 border-sky-500 bg-lab-800">
+                    Telemetry Charts
+                </button>
+                <button id="tab-log-btn" class="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200">
+                    Lab Flight Log
+                </button>
+            </div>
+
+            <!-- Tab 1: Real-time Telemetry Graphs -->
+            <div id="tab-charts" class="flex-1 p-3 overflow-y-auto space-y-3">
+                <div class="bg-lab-900 p-2.5 rounded-xl border border-slate-700">
+                    <div class="text-[11px] font-semibold text-slate-300 mb-1">Altitude vs. Time ($y$)</div>
+                    <div class="h-28">
+                        <canvas id="chart-alt"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-lab-900 p-2.5 rounded-xl border border-slate-700">
+                    <div class="text-[11px] font-semibold text-slate-300 mb-1">Velocity vs. Time ($v$)</div>
+                    <div class="h-28">
+                        <canvas id="chart-vel"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-lab-900 p-2.5 rounded-xl border border-slate-700">
+                    <div class="text-[11px] font-semibold text-slate-300 mb-1">Force Breakdown (N) [Thrust, Drag, Net]</div>
+                    <div class="h-32">
+                        <canvas id="chart-forces"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Event Log -->
+            <div id="tab-log" class="flex-1 p-3 overflow-y-auto hidden">
+                <div id="events-container" class="space-y-2 font-mono text-xs">
+                    <div class="p-2 rounded bg-lab-900 border border-slate-700 text-slate-400">
+                        Rocket ready for flight simulation.
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Physics Engine & Application Logic -->
+    <script>
+        lucide.createIcons();
+
+        // Standard Estes Motor Performance Database
+        const ESTES_MOTORS = {
+            'A8-3': { avgThrust: 4.5, burnTime: 0.5, delayTime: 3, propellantMass: 0.00312, totalImpulse: 2.25, isp: 80 },
+            'B6-4': { avgThrust: 5.2, burnTime: 0.8, delayTime: 4, propellantMass: 0.00624, totalImpulse: 5.0, isp: 85 },
+            'C6-5': { avgThrust: 6.0, burnTime: 1.7, delayTime: 5, propellantMass: 0.0125, totalImpulse: 10.0, isp: 90 }
+        };
+
+        // Engine State & Physics Variables
+        let state = {
+            running: false,
+            timeScale: 1,
+            time: 0,
+            dt: 0.01, // High precision 100 Hz simulation step
+            
+            // Motion
+            x: 0, y: 0,
+            vx: 0, vy: 0,
+            ax: 0, ay: 0,
+
+            // Flight Flags
+            stage: 'pad', // 'pad', 'thrust', 'coast', 'chute', 'landed'
+            offRod: false,
+            parachuteDeployed: false,
+            apogeeReached: false,
+            apogeeHeight: 0,
+            maxSpeed: 0,
+            burnoutAlt: 0,
+            burnoutSpeed: 0,
+
+            // Current Dynamic Forces
+            currentThrust: 0,
+            currentDrag: 0,
+            currentGravity: 0,
+            currentMass: 0,
+
+            // Camera & Particles
+            camMode: 'follow',
+            camX: 0, camY: 0, camZoom: 1,
+            particles: [],
+
+            // Data History for CSV Export
+            history: [],
+            params: {}
+        };
+
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Read UI inputs into active simulation parameter object
+        function readInputs() {
+            const getNum = id => parseFloat(document.getElementById(id).value) || 0;
+            const unitMult = document.getElementById('mass-unit').value === 'g' ? 0.001 : 1.0;
+
+            const mInit = getNum('mass-initial') * unitMult;
+            const mFinal = getNum('mass-final') * unitMult;
+            const motorKey = document.getElementById('motor-select').value;
+
+            let motor = ESTES_MOTORS[motorKey];
+            if (motorKey === 'custom') {
+                const cThrust = getNum('custom-thrust');
+                const cBurn = getNum('custom-burn');
+                motor = {
+                    avgThrust: cThrust,
+                    burnTime: cBurn,
+                    delayTime: 4,
+                    propellantMass: Math.max(0.001, mInit - mFinal),
+                    totalImpulse: cThrust * cBurn,
+                    isp: (cThrust * cBurn) / (Math.max(0.001, mInit - mFinal) * 9.81)
+                };
+            }
+
+            const diamM = getNum('rocket-diameter') / 100.0;
+            const crossArea = Math.PI * Math.pow(diamM / 2.0, 2);
+            const chuteDiamM = getNum('chute-diameter') / 100.0;
+            const chuteArea = Math.PI * Math.pow(chuteDiamM / 2.0, 2);
+
+            state.params = {
+                studentName: document.getElementById('student-name').value,
+                groupId: document.getElementById('group-id').value,
+                m0: mInit,
+                mf: mFinal,
+                propMass: Math.max(0, mInit - mFinal),
+                motor: motor,
+                motorKey: motorKey,
+                cd: getNum('rocket-cd'),
+                area: crossArea,
+                chuteArea: chuteArea,
+                rodLength: getNum('rod-length'),
+                launchAngle: getNum('launch-angle'),
+                windSpeed: getNum('wind-speed')
+            };
+
+            // Update UI calculated values
+            document.getElementById('val-wind').innerText = `${state.params.windSpeed} m/s`;
+            const propGrams = (state.params.propMass * 1000).toFixed(1);
+            document.getElementById('calc-prop-mass').innerText = `${propGrams} g`;
+
+            // Calculate Theoretical Tsiolkovsky Delta-V
+            const g0 = 9.81;
+            const isp = motor.isp || 85;
+            const deltav = isp * g0 * Math.log(state.params.m0 / Math.max(0.001, state.params.mf));
+            document.getElementById('calc-deltav').innerText = `${Math.round(deltav)} m/s`;
+
+            // Peak velocity without drag approximation
+            const burnTime = motor.burnTime;
+            const avgThrust = motor.avgThrust;
+            const avgMass = (state.params.m0 + state.params.mf) / 2.0;
+            const accelNoDrag = (avgThrust / avgMass) - g0;
+            const vmaxNoDrag = Math.max(0, accelNoDrag * burnTime);
+            document.getElementById('calc-vmax-nodrag').innerText = `${Math.round(vmaxNoDrag)} m/s`;
+
+            // Launch TWR
+            const twr = avgThrust / (state.params.m0 * g0);
+            document.getElementById('calc-twr').innerText = twr.toFixed(2);
+            document.getElementById('calc-twr').className = twr >= 1.2 ? "font-mono text-emerald-400" : "font-mono text-rose-400 font-bold";
+        }
+
+        // Toggle custom motor inputs
+        document.getElementById('motor-select').addEventListener('change', (e) => {
+            const isCustom = e.target.value === 'custom';
+            document.getElementById('custom-motor-panel').style.display = isCustom ? 'block' : 'none';
+            readInputs();
+        });
+
+        // Telemetry Charts Setup
+        let chartAlt, chartVel, chartForces;
+        function initCharts() {
+            const chartConfig = (color) => ({
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: { display: false },
+                    y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 9 } } }
+                },
+                plugins: { legend: { display: false } },
+                elements: { point: { radius: 0 }, line: { borderColor: color, borderWidth: 2 } }
+            });
+
+            chartAlt = new Chart(document.getElementById('chart-alt'), {
+                type: 'line',
+                data: { labels: [], datasets: [{ data: [] }] },
+                options: chartConfig('#38bdf8')
+            });
+
+            chartVel = new Chart(document.getElementById('chart-vel'), {
+                type: 'line',
+                data: { labels: [], datasets: [{ data: [] }] },
+                options: chartConfig('#34d399')
+            });
+
+            chartForces = new Chart(document.getElementById('chart-forces'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Thrust', data: [], borderColor: '#f97316', borderWidth: 1.5 },
+                        { label: 'Drag', data: [], borderColor: '#c084fc', borderWidth: 1.5 },
+                        { label: 'Gravity', data: [], borderColor: '#94a3b8', borderWidth: 1 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: { display: false },
+                        y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font: { size: 9 } } }
+                    },
+                    plugins: { legend: { display: true, labels: { color: '#cbd5e1', font: { size: 9 } } } },
+                    elements: { point: { radius: 0 } }
+                }
+            });
+        }
+
+        function logEvent(msg) {
+            const container = document.getElementById('events-container');
+            const timeStr = `T+${state.time.toFixed(2)}s`;
+            const elem = document.createElement('div');
+            elem.className = "p-2 rounded bg-lab-900 border border-slate-700 text-slate-200 flex items-start gap-2 animate-fadeIn";
+            elem.innerHTML = `<span class="text-sky-400 font-bold font-mono">[${timeStr}]</span><span>${msg}</span>`;
+            container.prepend(elem);
+        }
+
+        function resetSim() {
+            readInputs();
+            state.running = false;
+            state.time = 0;
+            state.x = 0; state.y = 0;
+            state.vx = 0; state.vy = 0;
+            state.ax = 0; state.ay = 0;
+            state.stage = 'pad';
+            state.offRod = false;
+            state.parachuteDeployed = false;
+            state.apogeeReached = false;
+            state.apogeeHeight = 0;
+            state.maxSpeed = 0;
+            state.burnoutAlt = 0;
+            state.burnoutSpeed = 0;
+            state.particles = [];
+            state.history = [];
+
+            document.getElementById('btn-play').classList.remove('hidden');
+            document.getElementById('btn-pause').classList.add('hidden');
+            document.getElementById('status-indicator').className = "w-2.5 h-2.5 rounded-full bg-slate-500";
+            document.getElementById('status-text').innerText = "READY ON LAUNCH PAD";
+            document.getElementById('summary-badge').classList.add('hidden');
+
+            document.getElementById('events-container').innerHTML = '';
+            logEvent("Rocket ready on launch pad.");
+
+            [chartAlt, chartVel, chartForces].forEach(c => {
+                c.data.labels = [];
+                c.data.datasets.forEach(d => d.data = []);
+                c.update();
+            });
+
+            updateHUD();
+        }
+
+        // Air density calculation
+        function getAirDensity(alt) {
+            return 1.225 * Math.exp(-alt / 8500);
+        }
+
+        // High Precision Physics Step
+        function physicsTick() {
+            if (!state.running) return;
+
+            const subSteps = Math.round(state.timeScale * 2);
+            for (let step = 0; step < subSteps; step++) {
+                state.time += state.dt;
+
+                const p = state.params;
+                const m0 = p.m0;
+                const mf = p.mf;
+                const motor = p.motor;
+
+                // 1. Calculate Mass and Thrust State
+                let thrust = 0;
+                let currentMass = mf;
+
+                if (state.time <= motor.burnTime) {
+                    state.stage = 'thrust';
+                    thrust = motor.avgThrust;
+                    const burnProgress = state.time / motor.burnTime;
+                    currentMass = m0 - (p.propMass * burnProgress);
+                } else {
+                    if (state.stage === 'thrust') {
+                        state.stage = 'coast';
+                        state.burnoutAlt = state.y;
+                        state.burnoutSpeed = Math.hypot(state.vx, state.vy);
+                        logEvent(`MOTOR BURNOUT (MECO) at altitude ${Math.round(state.y)} m, speed ${Math.round(state.burnoutSpeed)} m/s.`);
+                    }
+                    currentMass = mf;
+                }
+
+                state.currentMass = currentMass;
+                state.currentThrust = thrust;
+
+                // 2. Trajectory Kinematics & Launch Rod Constraint
+                const rodRad = (p.launchAngle * Math.PI) / 180.0;
+                const currentDist = Math.hypot(state.x, state.y);
+
+                if (currentDist < p.rodLength && !state.offRod) {
+                    // Constrained movement along launch rod
+                    const netF = thrust - (currentMass * 9.81 * Math.cos(rodRad));
+                    const accel = Math.max(0, netF / currentMass);
+                    state.ax = accel * Math.sin(rodRad);
+                    state.ay = accel * Math.cos(rodRad);
+                } else {
+                    if (!state.offRod) {
+                        state.offRod = true;
+                        logEvent(`Cleared launch rod at ${Math.round(Math.hypot(state.vx, state.vy))} m/s.`);
+                    }
+
+                    // Aerodynamic Drag
+                    const rho = getAirDensity(state.y);
+                    const speed = Math.hypot(state.vx, state.vy);
+                    
+                    let activeCd = p.cd;
+                    let activeArea = p.area;
+
+                    // Parachute Deployment Check (at or shortly after Apogee)
+                    if (state.vy <= 0 && !state.parachuteDeployed && state.y > 5) {
+                        state.parachuteDeployed = true;
+                        state.stage = 'chute';
+                        logEvent(`EJECTION CHARGE FIRED & PARACHUTE DEPLOYED at apogee!`);
+                    }
+
+                    if (state.parachuteDeployed) {
+                        activeCd = 1.5; // Parachute Drag Coefficient
+                        activeArea = p.chuteArea;
+                    }
+
+                    const q = 0.5 * rho * speed * speed;
+                    state.currentQ = q;
+
+                    const dragForce = q * activeCd * activeArea;
+                    state.currentDrag = dragForce;
+
+                    // Drag force direction opposite to velocity
+                    const dragFx = speed > 0 ? -dragForce * (state.vx / speed) : 0;
+                    const dragFy = speed > 0 ? -dragForce * (state.vy / speed) : 0;
+
+                    // Crosswind horizontal force component
+                    const windForce = 0.5 * rho * Math.pow(p.windSpeed, 2) * p.area;
+
+                    // Net Acceleration Calculation
+                    const thrustFx = thrust * Math.sin(rodRad);
+                    const thrustFy = thrust * Math.cos(rodRad);
+
+                    state.currentGravity = currentMass * 9.81;
+
+                    state.ax = (thrustFx + dragFx + windForce) / currentMass;
+                    state.ay = (thrustFy + dragFy - state.currentGravity) / currentMass;
+                }
+
+                // Euler-Cromer Numerical Integration
+                state.vx += state.ax * state.dt;
+                state.vy += state.ay * state.dt;
+                state.x += state.vx * state.dt;
+                state.y += state.vy * state.dt;
+
+                const currentSpeed = Math.hypot(state.vx, state.vy);
+                if (currentSpeed > state.maxSpeed) state.maxSpeed = currentSpeed;
+
+                // Apogee Detection
+                if (state.vy <= 0 && !state.apogeeReached && state.y > 2) {
+                    state.apogeeReached = true;
+                    state.apogeeHeight = state.y;
+                    logEvent(`APOGEE REACHED: Maximum Altitude ${state.y.toFixed(1)} m.`);
+                }
+
+                // Landing / Ground Impact
+                if (state.y <= 0) {
+                    state.y = 0;
+                    state.vx = 0;
+                    state.vy = 0;
+                    state.running = false;
+                    state.stage = 'landed';
+                    logEvent(`TOUCHDOWN at T+${state.time.toFixed(2)}s. Total flight complete.`);
+
+                    document.getElementById('status-text').innerText = "FLIGHT TERMINATED / LANDED";
+                    document.getElementById('status-indicator').className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+                    document.getElementById('summary-badge').classList.remove('hidden');
+                    document.getElementById('sum-apogee').innerText = `${state.apogeeHeight.toFixed(1)} m`;
+                    document.getElementById('sum-vmax').innerText = `${state.maxSpeed.toFixed(1)} m/s`;
+                    break;
+                }
+
+                // Particle Ejection (Exhaust Flame/Smoke)
+                if (state.stage === 'thrust') {
+                    for (let i = 0; i < 2; i++) {
+                        state.particles.push({
+                            x: state.x + (Math.random() - 0.5) * 0.2,
+                            y: state.y,
+                            vx: -Math.sin(rodRad) * 15 + (Math.random() - 0.5) * 4,
+                            vy: -Math.cos(rodRad) * 15 + (Math.random() - 0.5) * 4,
+                            life: 1.0,
+                            color: Math.random() > 0.4 ? '#f97316' : '#facc15'
+                        });
+                    }
+                }
+            }
+
+            // Record History Sample
+            if (state.time % 0.05 < state.dt) {
+                state.history.push({
+                    time: state.time.toFixed(2),
+                    altitude: state.y.toFixed(2),
+                    velocity: Math.hypot(state.vx, state.vy).toFixed(2),
+                    thrust: state.currentThrust.toFixed(2),
+                    drag: state.currentDrag.toFixed(2),
+                    mass: (state.currentMass * 1000).toFixed(1)
+                });
+            }
+
+            // Update Exhaust Particles
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const p = state.particles[i];
+                p.x += p.vx * state.dt;
+                p.y += p.vy * state.dt;
+                p.life -= state.dt * 2;
+                if (p.life <= 0) state.particles.splice(i, 1);
+            }
+
+            updateHUD();
+            updateCharts();
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-alt').innerText = `${state.y.toFixed(1)} m`;
+            const speed = Math.hypot(state.vx, state.vy);
+            document.getElementById('hud-vel').innerText = `${speed.toFixed(1)} m/s`;
+
+            const gForce = Math.hypot(state.ax, state.ay + 9.81) / 9.81;
+            document.getElementById('hud-acc').innerText = `${gForce.toFixed(1)} g`;
+            document.getElementById('hud-q').innerText = `${Math.round(state.currentQ || 0)} Pa`;
+
+            const m = Math.floor(state.time / 60).toString().padStart(2, '0');
+            const s = (state.time % 60).toFixed(2).padStart(5, '0');
+            document.getElementById('hud-time').innerText = `T+${m}:${s}`;
+
+            if (state.running) {
+                document.getElementById('status-indicator').className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+                document.getElementById('status-text').innerText = state.stage.toUpperCase() + " PHASE";
+            }
+        }
+
+        function updateCharts() {
+            if (state.time % 0.2 < state.dt) {
+                const tLabel = state.time.toFixed(1);
+                
+                [chartAlt, chartVel, chartForces].forEach(c => {
+                    if (c.data.labels.length > 80) {
+                        c.data.labels.shift();
+                        c.data.datasets.forEach(d => d.data.shift());
+                    }
+                });
+
+                chartAlt.data.labels.push(tLabel);
+                chartAlt.data.datasets[0].data.push(state.y.toFixed(1));
+                chartAlt.update();
+
+                chartVel.data.labels.push(tLabel);
+                chartVel.data.datasets[0].data.push(Math.hypot(state.vx, state.vy).toFixed(1));
+                chartVel.update();
+
+                chartForces.data.labels.push(tLabel);
+                chartForces.data.datasets[0].data.push(state.currentThrust.toFixed(1));
+                chartForces.data.datasets[1].data.push(state.currentDrag.toFixed(1));
+                chartForces.data.datasets[2].data.push(state.currentGravity.toFixed(1));
+                chartForces.update();
+            }
+        }
+
+        // Render Canvas Visuals
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Camera Target Math
+            if (state.camMode === 'follow') {
+                state.camX = state.x;
+                state.camY = state.y;
+                state.camZoom = Math.max(0.15, 2.5 - (state.y / 150));
+            } else if (state.camMode === 'pad') {
+                state.camX = 0;
+                state.camY = 10;
+                state.camZoom = 1.8;
+            } else if (state.camMode === 'full') {
+                state.camX = state.x / 2;
+                state.camY = Math.max(20, state.y / 2);
+                state.camZoom = Math.max(0.05, 180 / (state.y + 80));
+            }
+
+            ctx.save();
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height * 0.85;
+
+            // Sky Gradient Transition
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            if (state.y < 300) {
+                skyGrad.addColorStop(0, '#38bdf8');
+                skyGrad.addColorStop(1, '#bae6fd');
+            } else {
+                skyGrad.addColorStop(0, '#0f172a');
+                skyGrad.addColorStop(1, '#38bdf8');
+            }
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Matrix Transformation
+            ctx.translate(centerX, centerY);
+            ctx.scale(state.camZoom, -state.camZoom);
+            ctx.translate(-state.camX, -state.camY);
+
+            // Ground Line & Pad
+            ctx.fillStyle = '#16a34a';
+            ctx.fillRect(-5000, -10, 10000, 10);
+
+            // Launch Rod Render
+            const rodRad = (state.params.launchAngle * Math.PI) / 180;
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 0.15;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.sin(rodRad) * state.params.rodLength, Math.cos(rodRad) * state.params.rodLength);
+            ctx.stroke();
+
+            // Particles
+            state.particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 0.25, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Render Estes Athena Rocket
+            ctx.save();
+            ctx.translate(state.x, state.y);
+
+            // Draw Parachute if Deployed
+            if (state.parachuteDeployed) {
+                ctx.fillStyle = '#ef4444'; // Red/White Parachute Canopy
+                ctx.beginPath();
+                ctx.arc(0, 4, 2.5, 0, Math.PI, true);
+                ctx.closePath();
+                ctx.fill();
+
+                // Chute Shroud Lines
+                ctx.strokeStyle = '#f8fafc';
+                ctx.lineWidth = 0.05;
+                ctx.beginPath();
+                ctx.moveTo(-2.5, 4); ctx.lineTo(0, 1);
+                ctx.moveTo(2.5, 4); ctx.lineTo(0, 1);
+                ctx.stroke();
+            }
+
+            // Rocket Body (Estes Athena Silver/Blue Motif)
+            ctx.fillStyle = '#cbd5e1'; // Silver Body
+            ctx.fillRect(-0.25, 0, 0.5, 2.2);
+
+            // Blue Nose Cone
+            ctx.fillStyle = '#0284c7';
+            ctx.beginPath();
+            ctx.moveTo(-0.25, 2.2);
+            ctx.lineTo(0, 2.8);
+            ctx.lineTo(0.25, 2.2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Fins
+            ctx.fillStyle = '#0369a1';
+            ctx.beginPath();
+            ctx.moveTo(-0.25, 0); ctx.lineTo(-0.6, -0.3); ctx.lineTo(-0.25, 0.5); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(0.25, 0); ctx.lineTo(0.6, -0.3); ctx.lineTo(0.25, 0.5); ctx.fill();
+
+            ctx.restore();
+            ctx.restore();
+
+            requestAnimationFrame(render);
+        }
+
+        // Loop Runners
+        setInterval(physicsTick, 1000 / 100);
+        requestAnimationFrame(render);
+
+        // Buttons & Interactions
+        document.getElementById('btn-play').addEventListener('click', () => {
+            state.running = true;
+            document.getElementById('btn-play').classList.add('hidden');
+            document.getElementById('btn-pause').classList.remove('hidden');
+            logEvent("IGNITION! Liftoff!");
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            state.running = false;
+            document.getElementById('btn-pause').classList.add('hidden');
+            document.getElementById('btn-play').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', resetSim);
+
+        document.querySelectorAll('.speed-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.speed-btn').forEach(b => b.className = "speed-btn px-2 py-1 text-xs font-mono rounded text-slate-400 hover:text-white");
+                e.target.className = "speed-btn px-2 py-1 text-xs font-mono rounded bg-sky-500/20 text-sky-300 font-bold";
+                state.timeScale = parseFloat(e.target.dataset.speed);
+            });
+        });
+
+        const inputs = ['mass-initial', 'mass-final', 'mass-unit', 'rocket-diameter', 'rocket-cd', 'chute-diameter', 'rod-length', 'launch-angle', 'wind-speed', 'custom-thrust', 'custom-burn'];
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', readInputs);
+        });
+
+        // Export Lab CSV Function
+        document.getElementById('btn-export-csv').addEventListener('click', () => {
+            if (state.history.length === 0) {
+                alert("Please launch the rocket first to collect telemetry lab data!");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += `Student Name,${state.params.studentName}\nGroup ID,${state.params.groupId}\nMotor,${state.params.motorKey}\nInitial Mass (g),${state.params.m0*1000}\nFinal Mass (g),${state.params.mf*1000}\n\n`;
+            csvContent += "Time (s),Altitude (m),Velocity (m/s),Thrust (N),Drag (N),Mass (g)\n";
+
+            state.history.forEach(row => {
+                csvContent += `${row.time},${row.altitude},${row.velocity},${row.thrust},${row.drag},${row.mass}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Rocket_Lab_${state.params.studentName.replace(/\s+/g, '_')}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        });
+
+        // Tab Switches
+        document.getElementById('tab-charts-btn').addEventListener('click', () => {
+            document.getElementById('tab-charts').classList.remove('hidden');
+            document.getElementById('tab-log').classList.add('hidden');
+            document.getElementById('tab-charts-btn').className = "flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-sky-400 border-b-2 border-sky-500 bg-lab-800";
+            document.getElementById('tab-log-btn').className = "flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200";
+        });
+
+        document.getElementById('tab-log-btn').addEventListener('click', () => {
+            document.getElementById('tab-log').classList.remove('hidden');
+            document.getElementById('tab-charts').classList.add('hidden');
+            document.getElementById('tab-log-btn').className = "flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-sky-400 border-b-2 border-sky-500 bg-lab-800";
+            document.getElementById('tab-charts-btn').className = "flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200";
+        });
+
+        // Camera Toggles
+        const camMap = { 'cam-follow': 'follow', 'cam-pad': 'pad', 'cam-full': 'full' };
+        Object.keys(camMap).forEach(id => {
+            document.getElementById(id).addEventListener('click', (e) => {
+                Object.keys(camMap).forEach(k => document.getElementById(k).className = "px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-white");
+                e.target.className = "px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40";
+                state.camMode = camMap[id];
+            });
+        });
+
+        // Init
+        initCharts();
+        resetSim();
+    </script>
+</body>
+</html>
